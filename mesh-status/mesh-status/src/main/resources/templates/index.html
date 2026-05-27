@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UPI Mesh — Settlement Status</title>
+    <style>
+        :root {
+            --bg: #0d1117;
+            --surface: #161b22;
+            --border: #30363d;
+            --text: #e6edf3;
+            --muted: #8b949e;
+            --accent: #58a6ff;
+            --green: #3fb950;
+            --amber: #d29922;
+            --red: #f85149;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+            min-height: 100vh;
+        }
+
+        .container { max-width: 1100px; margin: 0 auto; padding: 24px 20px 48px; }
+
+        header {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 28px;
+        }
+
+        h1 { font-size: 1.6rem; font-weight: 600; }
+        .subtitle { color: var(--muted); font-size: 0.9rem; margin-top: 4px; max-width: 520px; }
+
+        .mesh-viz {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 12px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+
+        .node {
+            width: 10px; height: 10px;
+            border-radius: 50%;
+            background: var(--accent);
+            animation: pulse 2s ease-in-out infinite;
+        }
+        .node:nth-child(2) { animation-delay: 0.3s; background: var(--green); }
+        .node:nth-child(3) { animation-delay: 0.6s; }
+        .node:nth-child(4) { animation-delay: 0.9s; background: var(--amber); }
+        .node:nth-child(5) { animation-delay: 1.2s; background: var(--green); }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.4; transform: scale(0.9); }
+            50% { opacity: 1; transform: scale(1.15); }
+        }
+
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .live-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--green);
+            display: inline-block;
+            margin-right: 6px;
+            animation: blink 1.5s infinite;
+        }
+        @keyframes blink { 50% { opacity: 0.3; } }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 14px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 18px 16px;
+            cursor: pointer;
+            transition: border-color 0.15s, transform 0.15s;
+            user-select: none;
+        }
+        .stat-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+        .stat-card.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+        .stat-card .value {
+            font-size: 2rem;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            transition: transform 0.3s;
+        }
+        .stat-card.bump .value { transform: scale(1.08); }
+        .stat-card .label { color: var(--muted); font-size: 0.8rem; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+        .stat-card.settled .value { color: var(--green); }
+        .stat-card.dropped .value { color: var(--amber); }
+        .stat-card.invalid .value { color: var(--red); }
+        .stat-card.total .value { color: var(--accent); }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 280px;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 18px;
+        }
+
+        .card h2 {
+            font-size: 0.85rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 14px;
+            font-weight: 600;
+        }
+
+        .chart-wrap { display: flex; align-items: center; justify-content: center; }
+        .chart-legend { margin-top: 12px; font-size: 0.8rem; }
+        .legend-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 4px 0;
+            color: var(--muted);
+        }
+        .legend-dot {
+            width: 10px; height: 10px;
+            border-radius: 2px;
+            display: inline-block;
+            margin-right: 8px;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 14px;
+        }
+
+        input, select {
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 0.9rem;
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        #search { flex: 1; min-width: 180px; }
+
+        button {
+            background: #238636;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            padding: 8px 14px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+        }
+        button:hover { filter: brightness(1.1); }
+        button.secondary { background: #1f6feb; }
+        button.ghost {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text);
+        }
+        button.danger { background: #da3633; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+        th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+        th { color: var(--muted); font-size: 0.72rem; text-transform: uppercase; font-weight: 600; }
+        tbody tr { transition: background 0.12s; }
+        tbody tr:hover { background: rgba(88, 166, 255, 0.06); }
+        tbody tr.new-row { animation: fadeIn 0.5s ease; }
+        @keyframes fadeIn {
+            from { background: rgba(63, 185, 80, 0.2); }
+            to { background: transparent; }
+        }
+
+        .badge {
+            display: inline-block;
+            font-size: 0.72rem;
+            font-weight: 600;
+            padding: 3px 8px;
+            border-radius: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+        .badge-SETTLED { background: rgba(63, 185, 80, 0.2); color: var(--green); }
+        .badge-DUPLICATE_DROPPED { background: rgba(210, 153, 34, 0.2); color: var(--amber); }
+        .badge-INVALID { background: rgba(248, 81, 73, 0.2); color: var(--red); }
+
+        .amount { font-family: 'Consolas', 'Monaco', monospace; color: var(--green); font-weight: 600; }
+        .mono { font-family: 'Consolas', 'Monaco', monospace; font-size: 0.8rem; color: var(--muted); }
+
+        .demo-panel { margin-bottom: 20px; }
+        .demo-panel .row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        #log {
+            background: #010409;
+            color: #7ee787;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.75rem;
+            padding: 12px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            max-height: 140px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            margin-top: 16px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 32px;
+            color: var(--muted);
+        }
+
+        .toggle {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.85rem;
+            color: var(--muted);
+            cursor: pointer;
+        }
+        .toggle input { width: auto; accent-color: var(--accent); }
+
+        @media (max-width: 800px) {
+            .stats { grid-template-columns: repeat(2, 1fr); }
+            .grid-2 { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 480px) {
+            .stats { grid-template-columns: 1fr; }
+            table { font-size: 0.8rem; }
+            th, td { padding: 8px 6px; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <div>
+            <h1>UPI Mesh — Settlement Status</h1>
+            <p class="subtitle">
+                Live view of payments that reached the backend through offline mesh bridges.
+                Settled once, duplicates dropped, tampered packets rejected.
+            </p>
+        </div>
+        <div class="mesh-viz" title="Packets gossiping across mesh nodes">
+            <span class="node"></span><span class="node"></span><span class="node"></span>
+            <span class="node"></span><span class="node"></span>
+            <span style="font-size:0.75rem;color:var(--muted);margin-left:6px">mesh active</span>
+        </div>
+    </header>
+
+    <div class="toolbar">
+        <span><span class="live-dot"></span><span id="lastUpdated">Connecting…</span></span>
+        <label class="toggle" style="margin-left:auto">
+            <input type="checkbox" id="autoRefresh" checked> Auto-refresh (3s)
+        </label>
+        <button class="ghost" onclick="refresh()" title="Refresh now">↻ Refresh</button>
+    </div>
+
+    <div class="stats" id="stats">
+        <div class="stat-card total" data-filter="" onclick="setFilter('')">
+            <div class="value" id="stat-total">—</div>
+            <div class="label">Total processed</div>
+        </div>
+        <div class="stat-card settled" data-filter="SETTLED" onclick="setFilter('SETTLED')">
+            <div class="value" id="stat-settled">—</div>
+            <div class="label">Settled</div>
+        </div>
+        <div class="stat-card dropped" data-filter="DUPLICATE_DROPPED" onclick="setFilter('DUPLICATE_DROPPED')">
+            <div class="value" id="stat-dropped">—</div>
+            <div class="label">Duplicates dropped</div>
+        </div>
+        <div class="stat-card invalid" data-filter="INVALID" onclick="setFilter('INVALID')">
+            <div class="value" id="stat-invalid">—</div>
+            <div class="label">Invalid / tampered</div>
+        </div>
+    </div>
+
+    <div class="grid-2">
+        <div class="card demo-panel">
+            <h2>Simulate bridge ingest</h2>
+            <p style="font-size:0.85rem;color:var(--muted)">
+                Record an outcome as if a bridge node uploaded a packet to the backend.
+            </p>
+            <div class="row">
+                <input type="text" id="sender" placeholder="sender@upi" value="alice@upi" style="width:140px">
+                <span style="color:var(--muted)">→</span>
+                <input type="text" id="receiver" placeholder="receiver@upi" value="bob@upi" style="width:140px">
+                <span style="color:var(--muted)">₹</span>
+                <input type="number" id="amount" value="500" min="1" style="width:90px">
+                <select id="outcome">
+                    <option value="SETTLED">Settled</option>
+                    <option value="DUPLICATE_DROPPED">Duplicate dropped</option>
+                    <option value="INVALID">Invalid</option>
+                </select>
+                <button onclick="recordTx()">Record outcome</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Outcome mix</h2>
+            <div class="chart-wrap">
+                <svg id="donut" width="140" height="140" viewBox="0 0 140 140"></svg>
+            </div>
+            <div class="chart-legend" id="legend"></div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Transaction ledger</h2>
+        <div class="controls">
+            <input type="search" id="search" placeholder="Search sender or receiver…" oninput="renderTable()">
+            <select id="filterSelect" onchange="setFilter(this.value)">
+                <option value="">All outcomes</option>
+                <option value="SETTLED">Settled</option>
+                <option value="DUPLICATE_DROPPED">Duplicate dropped</option>
+                <option value="INVALID">Invalid</option>
+            </select>
+            <button class="danger" onclick="clearAll()">Clear ledger</button>
+        </div>
+        <div style="overflow-x:auto">
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Sender</th>
+                        <th>Receiver</th>
+                        <th>Amount</th>
+                        <th>Outcome</th>
+                        <th>Time</th>
+                    </tr>
+                </thead>
+                <tbody id="tx-body"></tbody>
+            </table>
+        </div>
+        <div id="log"></div>
+    </div>
+</div>
+
+<script>
+let transactions = [];
+let activeFilter = '';
+let prevStats = {};
+let refreshTimer = null;
+let lastSeenId = 0;
+
+function log(msg) {
+    const el = document.getElementById('log');
+    const line = '[' + new Date().toLocaleTimeString() + '] ' + msg;
+    el.textContent = line + '\n' + el.textContent;
+}
+
+function formatRupee(paise) {
+    return '₹' + (paise / 100).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+function formatTime(iso) {
+    try {
+        return new Date(iso).toLocaleString('en-IN', {
+            month: 'short', day: 'numeric',
+            hour: '2-digit', minute: '2-digit', second: '2-digit'
+        });
+    } catch { return iso; }
+}
+
+function setFilter(value) {
+    activeFilter = value;
+    document.getElementById('filterSelect').value = value;
+    document.querySelectorAll('.stat-card').forEach(c => {
+        c.classList.toggle('active', c.dataset.filter === value);
+    });
+    refresh();
+}
+
+function animateStat(id, newVal) {
+    const el = document.getElementById(id);
+    const card = el.closest('.stat-card');
+    if (prevStats[id] !== undefined && prevStats[id] !== newVal) {
+        card.classList.add('bump');
+        setTimeout(() => card.classList.remove('bump'), 300);
+    }
+    el.textContent = newVal;
+    prevStats[id] = newVal;
+}
+
+function drawDonut(settled, dropped, invalid) {
+    const total = settled + dropped + invalid;
+    const svg = document.getElementById('donut');
+    const cx = 70, cy = 70, r = 52, stroke = 18;
+    const colors = { SETTLED: '#3fb950', DUPLICATE_DROPPED: '#d29922', INVALID: '#f85149' };
+    const segments = [
+        { key: 'SETTLED', val: settled },
+        { key: 'DUPLICATE_DROPPED', val: dropped },
+        { key: 'INVALID', val: invalid }
+    ];
+
+    if (total === 0) {
+        svg.innerHTML = '<circle cx="70" cy="70" r="52" fill="none" stroke="#30363d" stroke-width="18"/>'
+            + '<text x="70" y="74" text-anchor="middle" fill="#8b949e" font-size="12">No data</text>';
+        document.getElementById('legend').innerHTML = '';
+        return;
+    }
+
+    let paths = '';
+    let offset = 0;
+    const circumference = 2 * Math.PI * r;
+
+    segments.forEach(seg => {
+        if (seg.val === 0) return;
+        const pct = seg.val / total;
+        const dash = pct * circumference;
+        const gap = circumference - dash;
+        paths += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none"
+            stroke="${colors[seg.key]}" stroke-width="${stroke}"
+            stroke-dasharray="${dash} ${gap}"
+            stroke-dashoffset="${-offset}"
+            transform="rotate(-90 ${cx} ${cy})"/>`;
+        offset += dash;
+    });
+
+    svg.innerHTML = paths
+        + `<text x="${cx}" y="${cy - 4}" text-anchor="middle" fill="#e6edf3" font-size="18" font-weight="600">${total}</text>`
+        + `<text x="${cx}" y="${cy + 14}" text-anchor="middle" fill="#8b949e" font-size="10">total</text>`;
+
+    document.getElementById('legend').innerHTML = segments.map(s => `
+        <div class="legend-row">
+            <span><span class="legend-dot" style="background:${colors[s.key]}"></span>${s.key.replace('_', ' ')}</span>
+            <span>${s.val} (${total ? Math.round(100 * s.val / total) : 0}%)</span>
+        </div>
+    `).join('');
+}
+
+async function refresh() {
+    try {
+        const [stats, txs] = await Promise.all([
+            fetch('/api/stats').then(r => r.json()),
+            fetch('/api/transactions' + (activeFilter ? '?outcome=' + activeFilter : '')).then(r => r.json())
+        ]);
+
+        animateStat('stat-total', stats.total);
+        animateStat('stat-settled', stats.settled);
+        animateStat('stat-dropped', stats.dropped);
+        animateStat('stat-invalid', stats.invalid);
+
+        drawDonut(stats.settled, stats.dropped, stats.invalid);
+
+        const newIds = txs.map(t => t.id).filter(id => id > lastSeenId);
+        if (lastSeenId > 0 && newIds.length) {
+            log('New transaction(s): ' + newIds.join(', '));
+        }
+        if (txs.length) lastSeenId = Math.max(lastSeenId, ...txs.map(t => t.id));
+
+        transactions = txs;
+        renderTable(newIds);
+        document.getElementById('lastUpdated').textContent =
+            'Updated ' + new Date().toLocaleTimeString();
+    } catch (e) {
+        document.getElementById('lastUpdated').textContent = 'Offline — retrying…';
+    }
+}
+
+function renderTable(highlightIds = []) {
+    const q = document.getElementById('search').value.trim().toLowerCase();
+    const tbody = document.getElementById('tx-body');
+    const filtered = transactions.filter(t => {
+        if (!q) return true;
+        return t.sender.toLowerCase().includes(q) || t.receiver.toLowerCase().includes(q);
+    });
+
+    if (!filtered.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No transactions match your filters.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = filtered.map(t => `
+        <tr class="${highlightIds.includes(t.id) ? 'new-row' : ''}">
+            <td class="mono">${t.id}</td>
+            <td>${esc(t.sender)}</td>
+            <td>${esc(t.receiver)}</td>
+            <td class="amount">${formatRupee(t.amountPaise)}</td>
+            <td><span class="badge badge-${t.outcome}">${t.outcome.replace('_', ' ')}</span></td>
+            <td class="mono">${formatTime(t.settledAt)}</td>
+        </tr>
+    `).join('');
+}
+
+function esc(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+
+async function recordTx() {
+    const amountRupees = parseFloat(document.getElementById('amount').value);
+    if (!amountRupees || amountRupees <= 0) {
+        log('Invalid amount');
+        return;
+    }
+    const body = {
+        sender: document.getElementById('sender').value,
+        receiver: document.getElementById('receiver').value,
+        amountPaise: Math.round(amountRupees * 100),
+        outcome: document.getElementById('outcome').value
+    };
+    const r = await fetch('/api/transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    if (!r.ok) {
+        log('Failed to record transaction');
+        return;
+    }
+    const tx = await r.json();
+    log(`Recorded #${tx.id}: ${tx.sender} → ${tx.receiver} ${formatRupee(tx.amountPaise)} [${tx.outcome}]`);
+    refresh();
+}
+
+async function clearAll() {
+    if (!confirm('Clear all transactions from the ledger?')) return;
+    await fetch('/api/transactions', { method: 'DELETE' });
+    lastSeenId = 0;
+    log('Ledger cleared');
+    refresh();
+}
+
+document.getElementById('autoRefresh').addEventListener('change', e => {
+    if (e.target.checked) {
+        refreshTimer = setInterval(refresh, 3000);
+    } else if (refreshTimer) {
+        clearInterval(refreshTimer);
+        refreshTimer = null;
+    }
+});
+
+refresh();
+refreshTimer = setInterval(refresh, 3000);
+</script>
+</body>
+</html>
