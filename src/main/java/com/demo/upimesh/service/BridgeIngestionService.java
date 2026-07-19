@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Orchestrates the full server-side pipeline for one inbound packet from a
@@ -36,6 +37,15 @@ public class BridgeIngestionService {
     @Value("${upi.mesh.packet-max-age-seconds:86400}")
     private long maxAgeSeconds;
 
+    // DUPLICATE_DROPPED and INVALID outcomes never reach the transactions table
+    // (they're rejected before settlement), so /api/stats needs these counted
+    // separately from Transaction.Status.
+    private final AtomicLong duplicateDroppedCount = new AtomicLong();
+    private final AtomicLong invalidCount = new AtomicLong();
+
+    public long getDuplicateDroppedCount() { return duplicateDroppedCount.get(); }
+    public long getInvalidCount() { return invalidCount.get(); }
+
     public IngestResult ingest(MeshPacket packet, String bridgeNodeId, int hopCount) {
         try {
             String packetHash = crypto.hashCiphertext(packet.getCiphertext());
@@ -44,6 +54,7 @@ public class BridgeIngestionService {
             if (!idempotency.claim(packetHash)) {
                 log.info("DUPLICATE packet {} from bridge {} — dropped",
                         packetHash.substring(0, 12) + "...", bridgeNodeId);
+                duplicateDroppedCount.incrementAndGet();
                 return IngestResult.duplicate(packetHash);
             }
 
@@ -54,6 +65,7 @@ public class BridgeIngestionService {
             } catch (Exception e) {
                 log.warn("Decryption failed for packet {}: {}",
                         packetHash.substring(0, 12) + "...", e.getMessage());
+                invalidCount.incrementAndGet();
                 return IngestResult.invalid(packetHash, "decryption_failed");
             }
 
@@ -62,9 +74,11 @@ public class BridgeIngestionService {
             if (ageSeconds > maxAgeSeconds) {
                 log.warn("Packet {} too old ({}s), rejected",
                         packetHash.substring(0, 12) + "...", ageSeconds);
+                invalidCount.incrementAndGet();
                 return IngestResult.invalid(packetHash, "stale_packet");
             }
             if (ageSeconds < -300) { // small clock-skew tolerance
+                invalidCount.incrementAndGet();
                 return IngestResult.invalid(packetHash, "future_dated");
             }
 
@@ -74,6 +88,7 @@ public class BridgeIngestionService {
 
         } catch (Exception e) {
             log.error("Ingestion error: {}", e.getMessage(), e);
+            invalidCount.incrementAndGet();
             return IngestResult.invalid("?", "internal_error: " + e.getMessage());
         }
     }

@@ -4,8 +4,10 @@ import com.demo.upimesh.crypto.ServerKeyHolder;
 import com.demo.upimesh.model.*;
 import com.demo.upimesh.service.*;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.math.BigDecimal;
 import java.util.*;
@@ -30,6 +32,7 @@ public class ApiController {
     @Autowired private AccountRepository accountRepo;
     @Autowired private TransactionRepository txRepo;
     @Autowired private IdempotencyService idempotency;
+    @Autowired private MeshEventBroadcaster events;
 
     // ------------------------------------------------------------------ key
 
@@ -56,6 +59,10 @@ public class ApiController {
 
         String startDevice = req.startDevice == null ? "phone-alice" : req.startDevice;
         mesh.inject(startDevice, packet);
+
+        String shortId = packet.getPacketId().substring(0, 8);
+        events.broadcast("injected", Map.of(
+                "packetId", shortId, "device", startDevice, "ttl", packet.getTtl()));
 
         return ResponseEntity.ok(Map.of(
                 "packetId", packet.getPacketId(),
@@ -98,6 +105,8 @@ public class ApiController {
     @PostMapping("/mesh/gossip")
     public Map<String, Object> meshGossip() {
         MeshSimulatorService.GossipResult r = mesh.gossipOnce();
+        events.broadcast("gossip", Map.of(
+                "transfers", r.transfers(), "deviceCounts", r.deviceCounts()));
         return Map.of(
                 "transfers", r.transfers(),
                 "deviceCounts", r.deviceCounts()
@@ -121,14 +130,16 @@ public class ApiController {
         uploads.parallelStream().forEach(up -> {
             BridgeIngestionService.IngestResult r =
                     bridge.ingest(up.packet(), up.bridgeNodeId(), 5 - up.packet().getTtl());
+            Map<String, Object> result = Map.of(
+                    "bridgeNode", up.bridgeNodeId(),
+                    "packetId", up.packet().getPacketId().substring(0, 8),
+                    "outcome", r.outcome(),
+                    "reason", r.reason() == null ? "" : r.reason(),
+                    "transactionId", r.transactionId() == null ? -1 : r.transactionId()
+            );
+            events.broadcast("settlement", result);
             synchronized (results) {
-                results.add(Map.of(
-                        "bridgeNode", up.bridgeNodeId(),
-                        "packetId", up.packet().getPacketId().substring(0, 8),
-                        "outcome", r.outcome(),
-                        "reason", r.reason() == null ? "" : r.reason(),
-                        "transactionId", r.transactionId() == null ? -1 : r.transactionId()
-                ));
+                results.add(result);
             }
         });
 
@@ -142,7 +153,18 @@ public class ApiController {
     public Map<String, Object> meshReset() {
         mesh.resetMesh();
         idempotency.clear();
+        events.broadcast("reset", Map.of());
         return Map.of("status", "mesh and idempotency cache cleared");
+    }
+
+    /**
+     * Live event stream for the frontend: injection / gossip / settlement
+     * events, pushed as they happen so the UI can animate the mesh without
+     * polling. See MeshEventBroadcaster.
+     */
+    @GetMapping(value = "/mesh/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter meshEvents() {
+        return events.subscribe();
     }
 
     // -------------------------------------------------------------- bridge
@@ -172,5 +194,32 @@ public class ApiController {
     @GetMapping("/transactions")
     public List<Transaction> listTransactions() {
         return txRepo.findTop20ByOrderByIdDesc();
+    }
+
+    // ----------------------------------------------------------------- stats
+
+    /**
+     * Outcome breakdown for the stats panel. SETTLED/REJECTED come from the
+     * transactions table; DUPLICATE_DROPPED/INVALID never reach that table
+     * (they're rejected before settlement), so they're tracked as counters
+     * on BridgeIngestionService instead.
+     */
+    @GetMapping("/stats")
+    public Map<String, Object> stats() {
+        long settled = txRepo.countByStatus(Transaction.Status.SETTLED);
+        long rejected = txRepo.countByStatus(Transaction.Status.REJECTED);
+        long duplicateDropped = bridge.getDuplicateDroppedCount();
+        long invalid = bridge.getInvalidCount();
+
+        Map<String, Long> outcomes = new LinkedHashMap<>();
+        outcomes.put("settled", settled);
+        outcomes.put("rejected", rejected);
+        outcomes.put("duplicateDropped", duplicateDropped);
+        outcomes.put("invalid", invalid);
+
+        return Map.of(
+                "outcomes", outcomes,
+                "total", settled + rejected + duplicateDropped + invalid
+        );
     }
 }
