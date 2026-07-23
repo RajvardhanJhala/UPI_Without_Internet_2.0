@@ -3,6 +3,7 @@ package com.demo.upimesh.controller;
 import com.demo.upimesh.crypto.ServerKeyHolder;
 import com.demo.upimesh.model.*;
 import com.demo.upimesh.service.*;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -176,7 +177,7 @@ public class ApiController {
      */
     @PostMapping("/bridge/ingest")
     public ResponseEntity<?> ingest(
-            @RequestBody MeshPacket packet,
+            @Valid @RequestBody MeshPacket packet,
             @RequestHeader(value = "X-Bridge-Node-Id", defaultValue = "unknown") String bridgeNodeId,
             @RequestHeader(value = "X-Hop-Count", defaultValue = "0") int hopCount) {
 

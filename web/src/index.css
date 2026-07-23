@@ -1,0 +1,172 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+
+/*
+ * Theme tokens are two-tier: raw palette variables (--bg, --accent, …) are
+ * swapped at runtime by the [data-theme] attribute, and @theme inline maps
+ * them to Tailwind color tokens so utilities like bg-bg / text-ink / border-edge
+ * cascade the moment the theme flips. Component class names never change.
+ */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface2: var(--surface-2);
+  --color-edge: var(--border);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-deep: var(--accent-strong);
+  --color-ok: var(--ok);
+  --color-ok-deep: var(--ok-strong);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --color-console: var(--console);
+
+  --font-sans: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, ui-sans-serif, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Consolas, Monaco,
+    monospace;
+}
+
+/* Deep-space indigo — the default */
+:root,
+[data-theme="dark"] {
+  --bg: #080b16;
+  --surface: #0f1424;
+  --surface-2: #182136;
+  --border: #232d47;
+  --ink: #e9edf8;
+  --muted: #8a95b4;
+  --accent: #7c8dff;
+  --accent-strong: #5566f0;
+  --ok: #34d399;
+  --ok-strong: #10b981;
+  --warn: #f0b429;
+  --danger: #f65a68;
+  --console: #6ee7b7;
+  --node-line: 124, 141, 255; /* rgb of accent, for the canvas */
+  --node-alpha: 0.9; /* canvas intensity multiplier */
+  color-scheme: dark;
+}
+
+/* Daylight — cool porcelain */
+[data-theme="light"] {
+  --bg: #eef2fb;
+  --surface: #ffffff;
+  --surface-2: #f3f6fd;
+  --border: #d9e0f0;
+  --ink: #131a30;
+  --muted: #55618a;
+  --accent: #4f6ef7;
+  --accent-strong: #3a54dc;
+  --ok: #0fa968;
+  --ok-strong: #0b8a54;
+  --warn: #b8790a;
+  --danger: #dc3b48;
+  --console: #0b8a54;
+  --node-line: 79, 110, 247;
+  --node-alpha: 0.4;
+  color-scheme: light;
+}
+
+html {
+  background-color: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+/* Layered radial glows behind everything; the animated canvas sits on top of
+   this and the content above both. Glows are derived from --accent so they
+   tint (never darken) correctly in both themes. */
+.app-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background:
+    radial-gradient(
+      55rem 55rem at 12% -8%,
+      color-mix(in srgb, var(--accent) 20%, transparent) 0%,
+      transparent 55%
+    ),
+    radial-gradient(
+      50rem 50rem at 105% 12%,
+      color-mix(in srgb, var(--accent) 14%, transparent) 0%,
+      transparent 50%
+    ),
+    var(--bg);
+  transition: background 0.4s ease;
+}
+
+.mesh-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* Frosted card surface with a hairline top highlight */
+.card {
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+}
+
+/* Packet dot flying between two mesh nodes (positions via CSS vars) */
+@keyframes fly {
+  0% {
+    transform: translate(var(--fly-x1), var(--fly-y1));
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--fly-x2), var(--fly-y2));
+    opacity: 0;
+  }
+}
+
+.fly-dot {
+  animation: fly var(--fly-dur, 700ms) ease-in-out forwards;
+}
+
+/* Transient pulse ring used by the mesh visualization */
+@keyframes pulse-ring {
+  0% {
+    r: 34px;
+    opacity: 0.9;
+  }
+  100% {
+    r: 60px;
+    opacity: 0;
+  }
+}
+
+.pulse-ring {
+  animation: pulse-ring 0.9s ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  html {
+    scroll-behavior: auto;
+  }
+}

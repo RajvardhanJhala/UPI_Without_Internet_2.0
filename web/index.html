@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Offline UPI payments routed through a Bluetooth-style mesh — hybrid encryption, exactly-once settlement, live demo."
+    />
+    <title>UPI Offline Mesh — Live Demo</title>
+    <script>
+      // Set the theme before first paint so the backdrop never flashes the
+      // wrong palette (and stays in sync with useTheme's resolution order).
+      (function () {
+        try {
+          var p = new URLSearchParams(location.search).get('theme')
+          var s = localStorage.getItem('upi-mesh-theme')
+          var t =
+            p === 'light' || p === 'dark'
+              ? p
+              : s === 'light' || s === 'dark'
+                ? s
+                : matchMedia('(prefers-color-scheme: light)').matches
+                  ? 'light'
+                  : 'dark'
+          document.documentElement.setAttribute('data-theme', t)
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'dark')
+        }
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
