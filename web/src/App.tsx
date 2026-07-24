@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Radio } from 'lucide-react'
+import { Play, Radio } from 'lucide-react'
 import { api, type Account, type MeshState, type Stats, type Transaction } from './lib/api'
 import { useMeshEvents, type MeshEvent } from './hooks/useMeshEvents'
 import { useTheme } from './hooks/useTheme'
@@ -22,6 +22,7 @@ function App() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [backendUp, setBackendUp] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [autoPlaying, setAutoPlaying] = useState(false)
   const [log, setLog] = useState<LogEntry[]>([])
   const [lastEvent, setLastEvent] = useState<MeshEvent | null>(null)
   const logSeq = useRef(0)
@@ -85,6 +86,39 @@ function App() {
     [appendLog, refresh],
   )
 
+  // Auto-play the whole story end to end so a first-time visitor sees a
+  // payment settle without needing to know the steps. Each pause is timed so
+  // the SSE-driven mesh animation for that step has room to play.
+  const watchItRun = useCallback(async () => {
+    if (busy) return
+    setAutoPlaying(true)
+    setBusy(true)
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+    try {
+      appendLog('info', 'demo: resetting the mesh for a clean run')
+      await api.reset()
+      await sleep(700)
+      appendLog('info', 'demo: Alice pays Bob ₹500 — no internet on her phone')
+      await api.send({ senderVpa: 'alice@demo', receiverVpa: 'bob@demo', amount: 500, pin: '1234' })
+      await sleep(1500)
+      appendLog('info', 'demo: the encrypted payment gossips phone to phone')
+      await api.gossip()
+      await sleep(1600)
+      await api.gossip()
+      await sleep(1600)
+      appendLog('info', 'demo: a phone reaches 4G and uploads to the backend')
+      await api.flush()
+      await sleep(1300)
+      appendLog('ok', 'demo: settled exactly once — watch the ledger and balances')
+    } catch (e) {
+      appendLog('error', e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+      setAutoPlaying(false)
+      refresh()
+    }
+  }, [busy, appendLog, refresh])
+
   return (
     <>
       <div className="app-backdrop" />
@@ -109,6 +143,14 @@ function App() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={watchItRun}
+              disabled={busy}
+              className="flex items-center gap-2 rounded-full bg-accent px-4 py-1.5 text-sm font-semibold text-white shadow-lg shadow-accent/20 transition-all hover:bg-accent-deep disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Play size={15} aria-hidden="true" className={autoPlaying ? 'animate-pulse' : ''} />
+              {autoPlaying ? 'Playing…' : 'Watch it run'}
+            </button>
             <div className="flex items-center gap-2 rounded-full border border-edge bg-surface px-3 py-1.5 text-xs text-muted">
               <span
                 className={`h-2 w-2 rounded-full ${backendUp ? 'bg-ok' : 'bg-danger'} ${backendUp ? 'animate-pulse' : ''}`}
