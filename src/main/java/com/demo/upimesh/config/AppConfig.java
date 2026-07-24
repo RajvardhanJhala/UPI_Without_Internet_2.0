@@ -7,6 +7,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
+import java.util.Arrays;
+
 @Configuration
 @EnableScheduling
 public class AppConfig {
@@ -24,7 +26,13 @@ public class AppConfig {
     @Bean
     public WebMvcConfigurer corsConfigurer(
             @Value("${upi.mesh.cors-allowed-origins:http://localhost:5173}") String allowedOrigins) {
-        String[] origins = allowedOrigins.split(",");
+        // Trim each entry and drop blanks/trailing slashes so a stray space or
+        // slash from a copy-pasted env var can't silently break the match.
+        String[] origins = Arrays.stream(allowedOrigins.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .map(s -> s.endsWith("/") ? s.substring(0, s.length() - 1) : s)
+                .toArray(String[]::new);
         return new WebMvcConfigurer() {
             @Override
             public void addCorsMappings(CorsRegistry registry) {
